@@ -10,6 +10,7 @@ import matplotlib.colors as mcolors
 from folium.plugins import MeasureControl
 import streamlit.components.v1 as components
 import os
+import re
 
 # Set up the Streamlit page 
 #st.image("static/logo2.png", width=200)
@@ -297,7 +298,8 @@ grouped_data = merged_data.groupby('CensusTract').apply(combine_districts_for_tr
 
 # Function to parse district information with proportions
 def parse_district_info(district_str):
-    """Parse district string that may contain proportions like 'WOODBRIDGE:100%' or 'COLES:39.91%,POTOMAC:60.09%'"""
+    """Parse district string that may contain proportions like 'WOODBRIDGE:100%' or 'COLES:39.91%,POTOMAC:60.09%' or 'GAINESVILLE15.18%'"""
+    
     if district_str == 'Not Available' or not district_str:
         return {
             'districts': [],
@@ -329,9 +331,26 @@ def parse_district_info(district_str):
                 districts.append(district_name)
                 proportions[district_name] = 100.0
         else:
-            # Format: "DISTRICT" (no proportion)
-            districts.append(part)
-            proportions[part] = 100.0
+            # Check if there's a percentage without a colon (e.g., "GAINESVILLE15.18%")
+            # Use regex to find digits followed by %
+            match = re.search(r'(\d+\.?\d*)%$', part)
+            if match:
+                # Extract district name (everything before the percentage)
+                proportion_str = match.group(1)
+                district_name = part[:match.start()].strip()
+                
+                try:
+                    proportion = float(proportion_str)
+                    districts.append(district_name)
+                    proportions[district_name] = proportion
+                except ValueError:
+                    # If proportion parsing fails, treat as district name only
+                    districts.append(part)
+                    proportions[part] = 100.0
+            else:
+                # Format: "DISTRICT" (no proportion)
+                districts.append(part)
+                proportions[part] = 100.0
     
     # Determine primary district (highest proportion)
     primary_district = max(proportions.keys(), key=lambda k: proportions[k]) if proportions else 'Not Available'
@@ -348,7 +367,7 @@ def parse_district_info(district_str):
             if prop == 100.0:
                 display_parts.append(district)
             else:
-                display_parts.append(f"{district} ({prop:.1f}%)")
+                display_parts.append(f"{district} ({prop:.2f}%)")
         display_text = ', '.join(display_parts)
     
     is_multi_district = len(districts) > 1
@@ -1502,7 +1521,7 @@ with open(output_file, "w") as f:
                 tractData.districts.forEach(function(district, index) {{
                     var proportion = tractData.proportions[district];
                     if (index > 0) html += '<br/>';
-                    html += `${{district}}: ${{proportion.toFixed(1)}}%`;
+                    html += `${{district}}: ${{proportion.toFixed(2)}}%`;
                 }});
                 
                 html += `</span>
